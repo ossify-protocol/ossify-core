@@ -47,6 +47,23 @@ impl RwaCollateral for MyInvoiceToken {
 }
 ```
 
+### A worked example
+
+`contracts/reference-rwa` is a complete 1:1 implementation to read alongside this
+guide. It creates its asset record (face value, due date, issuer) in an `init` that
+requires the issuer's authorization, and reports a `0` collateral value and `false`
+redeemability once the claim has been redeemed, liquidated or passed its due date.
+Two details there are worth copying:
+
+- **Typed errors on a trait function.** `liquidate` belongs to the shared trait, whose
+  signature returns `Result<(), soroban_sdk::Error>` and cannot be changed, so the
+  reference token defines a `#[contracterror]` enum and converts it on the way out
+  (`Err(ContractError::AlreadyRedeemed.into())`). Consumers convert the host error back
+  with `ContractError::try_from(error)`. Functions that are not part of the trait, such
+  as `init` and `redeem` there, can return `Result<_, YourError>` directly.
+- **Liquidator authorization.** The reference `liquidate` calls
+  `liquidator.require_auth()`, because that address is the one taking over the claim.
+
 ## Step 3: Enable Registration
 
 Because the `RwaRegistry` ensures security by requiring the token contract to authorize its own registration (`token.require_auth()`), your contract must provide a way to invoke the registry.
