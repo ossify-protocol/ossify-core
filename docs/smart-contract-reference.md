@@ -92,9 +92,49 @@ returns the matching host error code, which a consumer converts back with
 
 ## 4. `ToyLendingPool` (`contracts/toy-lending-pool`)
 
-A reference consumer demonstrating how to integrate Ossify-compliant RWAs.
+A reference consumer demonstrating how to integrate Ossify-compliant RWAs. It
+records one position per borrower and collateral token, so the same collateral
+cannot back two loans at once, and no settlement asset moves: a loan is the
+stored position and repayment is that position being cleared.
 
 ### `borrow_against`
-- **Signature**: `pub fn borrow_against(env: Env, registry: Address, token: Address) -> i128`
-- **Description**: Mocks borrowing against an RWA token. Validates the token against the registry, checks redeemability, queries its value, and lends out 50%. Emits a `borrow` event.
-- **Who Can Call**: Anyone (in this mock implementation).
+- **Signature**: `pub fn borrow_against(env: Env, borrower: Address, registry: Address, token: Address) -> Result<i128, ContractError>`
+- **Description**: Validates the token against the registry, checks redeemability, queries its value through the trait client, stores a `Position` for the borrower and lends out 50% of the reported value. Fails with `NotRegistered`, `NotRedeemable` or `PositionAlreadyOpen` instead of panicking. Emits a `borrow` event.
+- **Who Can Call**: The `borrower` address, which must authorize the call.
+
+### `repay`
+- **Signature**: `pub fn repay(env: Env, borrower: Address, token: Address) -> Result<i128, ContractError>`
+- **Description**: Clears the borrower's open position in full and returns the amount owed, which frees the collateral to be borrowed against again. Fails with `NoOpenPosition` when there is nothing to repay. Emits a `repay` event.
+- **Who Can Call**: The `borrower` address, which must authorize the call.
+
+### `get_position`
+- **Signature**: `pub fn get_position(env: Env, borrower: Address, token: Address) -> Option<Position>`
+- **Description**: Returns the borrower's open position against `token`, or `None`. The `Position` holds the collateral value read when the loan was issued and the amount owed.
+- **Who Can Call**: Anyone.
+
+### Events
+
+| Event | Topic | Data |
+| --- | --- | --- |
+| `Borrow` | `borrow` | `(borrower, token, amount_lent)` |
+| `Repay` | `repay` | `(borrower, token, amount_repaid)` |
+
+Both publish a list as their data, the shape the pool published before it stored
+positions; `Borrow` gained the borrower in that change.
+
+### `ContractError`
+
+| Variant | Code | Raised when |
+| --- | --- | --- |
+| `NotRegistered` | 1 | The token is not listed in the registry the pool was pointed at. |
+| `NotRedeemable` | 2 | The token reports that it is not currently redeemable. |
+| `PositionAlreadyOpen` | 3 | The borrower already has an open position against this collateral. |
+| `NoOpenPosition` | 4 | `repay` is called without an open position for this borrower and token. |
+
+### Storage and limits
+
+Positions are held in persistent storage keyed by borrower and token, and the
+entry's TTL is extended when it is created (see `POSITION_TTL_THRESHOLD` and
+`POSITION_TTL_EXTEND_TO`), so an outstanding loan cannot be archived out from
+under the borrower. This is still a mock: there is no interest, no partial
+repayment, no settlement asset and no LTV health check.

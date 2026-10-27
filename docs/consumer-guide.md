@@ -81,3 +81,16 @@ match token_client.try_liquidate(&token_address, &liquidator_address) {
     Err(Err(_invoke_error)) => { /* the invocation itself aborted */ }
 }
 ```
+
+## A reference consumer
+
+`contracts/toy-lending-pool` is a small consumer to read alongside this guide. It
+covers the whole flow above in one place, and two of its choices are worth copying:
+
+- **Reject with typed errors, not panics.** An unregistered token or a token that
+  reports that it is not redeemable returns a `#[contracterror]` variant, so a
+  caller can react to the reason instead of parsing a panic message.
+- **Record the loan as a position.** It keeps one position per borrower and
+  collateral token, keyed in persistent storage, which is what stops the same
+  collateral from backing two loans. Repayment clears the position and emits an
+  event, so an indexer can follow the flow without polling.
