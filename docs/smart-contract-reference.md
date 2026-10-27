@@ -43,24 +43,52 @@ The central on-chain registry of compliant tokens.
 
 ## 3. `MockInvoiceToken` (`contracts/reference-rwa`)
 
-A reference implementation of a tokenized factoring invoice.
+A reference implementation of a tokenized factoring invoice. It is a 1:1 model:
+one contract instance holds one asset record, created once through `init`.
+
+### `init`
+- **Signature**: `pub fn init(env: Env, issuer: Address, face_value: i128, due_date: u64) -> Result<(), ContractError>`
+- **Description**: Creates the asset record: `face_value` in 7-decimal units, `due_date` as a ledger timestamp in seconds, the `issuer`, and the `redeemed` and `liquidated` flags, both starting `false`. A second call fails with `AlreadyInitialized` instead of replacing the record.
+- **Who Can Call**: The `issuer` address, which must authorize the call.
+
+### `redeem`
+- **Signature**: `pub fn redeem(env: Env) -> Result<(), ContractError>`
+- **Description**: Marks the invoice as settled by its issuer, retiring the claim. From then on `collateral_value` reports `0` and `is_redeemable` reports `false`, and a later liquidation fails with `AlreadyRedeemed`. Fails with `PastDue` at or after the due date, and with `AlreadyRedeemed`, `AlreadyLiquidated` or `NotInitialized` as applicable.
+- **Who Can Call**: The issuer stored by `init`, which must authorize the call.
 
 ### `collateral_value`
 - **Signature**: `fn collateral_value(env: Env, token: Address) -> i128`
-- **Description**: Mocks a static value representing a $1,000 invoice (assuming 7 decimals, returns `1000_0000000`).
+- **Description**: Returns the stored face value while the claim is live, and `0` once it has been redeemed, has been liquidated, or is past its due date. A token that was never initialized also reports `0`.
 
 ### `is_redeemable`
 - **Signature**: `fn is_redeemable(env: Env, token: Address) -> bool`
-- **Description**: Mocks an always-redeemable state (returns `true`).
+- **Description**: `true` only while the claim is live: not redeemed, not liquidated, and before its due date. A token that was never initialized reports `false`.
 
 ### `liquidate`
 - **Signature**: `fn liquidate(env: Env, token: Address, liquidator: Address) -> Result<(), Error>`
-- **Description**: Mocks a successful liquidation (returns `Ok(())`).
+- **Description**: Marks the asset liquidated. This 1:1 model has no bearer balances, so the flag on the record is the whole on-chain effect: the claim stops counting as collateral and stops being redeemable. Liquidation stays available after the due date, which is the default case it exists for, and fails with `AlreadyRedeemed` or `AlreadyLiquidated` otherwise.
+- **Who Can Call**: The `liquidator` address, which must authorize the call, since it is the address taking over the claim.
 
 ### `register_self`
 - **Signature**: `pub fn register_self(env: Env, registry: Address)`
 - **Description**: A helper function allowing the contract to authorize its own registration in the `RwaRegistry`.
 - **Who Can Call**: Anyone, as it strictly registers the contract's own address.
+
+### `ContractError`
+
+Typed failures, defined with `#[contracterror]`. The shared trait fixes
+`liquidate`'s signature to `Result<(), soroban_sdk::Error>`, so that one function
+returns the matching host error code, which a consumer converts back with
+`ContractError::try_from(error)`. The token's own functions return
+`Result<_, ContractError>` directly.
+
+| Variant | Code | Raised when |
+| --- | --- | --- |
+| `AlreadyInitialized` | 1 | `init` is called on a token that already has an asset record. |
+| `NotInitialized` | 2 | `redeem` or `liquidate` is called before `init`. |
+| `AlreadyRedeemed` | 3 | The issuer already redeemed the claim. |
+| `AlreadyLiquidated` | 4 | A liquidator already took over the claim. |
+| `PastDue` | 5 | `redeem` is called at or after the due date. |
 
 ## 4. `ToyLendingPool` (`contracts/toy-lending-pool`)
 

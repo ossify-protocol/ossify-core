@@ -19,7 +19,7 @@ Ossify is a shared collateral standard for tokenized Real-World Assets (RWAs). I
 ## Architecture & Layout
 - **`contracts/trait/`**: Defines the `RwaCollateral` interface trait.
 - **`contracts/registry/`**: A self-registration contract allowing any RWA token to broadcast its compliance with the standard.
-- **`contracts/reference-rwa/`**: A mock token implementation demonstrating a correct integration.
+- **`contracts/reference-rwa/`**: A reference implementation of a tokenized invoice that stores its asset record (face value, due date, issuer) and models redemption and liquidation.
 - **`contracts/toy-lending-pool/`**: A minimal mock lending pool that utilizes the registry and trait to check token collateral values and issue simulated loans.
 
 ## Quick Start

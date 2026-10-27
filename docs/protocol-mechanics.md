@@ -28,6 +28,15 @@ If the borrower defaults on their loan or the consumer protocol requires the ass
 1. The lending pool calls the `liquidate(token, liquidator)` function defined by the `RwaCollateral` trait.
 2. The token contract handles the underlying logic to transfer ownership, update state, or otherwise settle the liquidation in favor of the `liquidator` address.
 
+In the 1:1 reference model (`contracts/reference-rwa`) the liquidation is a flag on
+the asset record: the claim then reports a `0` collateral value and `false` for
+`is_redeemable`. It requires the `liquidator` to authorize the call, it stays
+available after the due date, and it is rejected with a typed error if the claim
+was already redeemed or already liquidated. Redemption retires the claim the same
+way: once the issuer has settled it, `collateral_value` reports `0`,
+`is_redeemable` reports `false`, and a later liquidation fails as
+`AlreadyRedeemed`.
+
 ## 4. Deregistration
 
 If a token issuer decides to deprecate their asset or withdraw from the Ossify standard, they can remove themselves from the registry.

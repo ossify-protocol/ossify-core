@@ -66,3 +66,18 @@ If the position becomes undercollateralized or the borrower defaults, your proto
 // Liquidate and transfer the claim to the liquidator address
 token_client.liquidate(&token_address, &liquidator_address);
 ```
+
+Two things to expect from a compliant token. First, it may require the
+`liquidator_address` to authorize the call, since that address is the one taking
+over the claim; the reference invoice token does. Pass an address that can sign,
+not an arbitrary one. Second, liquidation is a state change on the token, so it can
+fail with a typed error when the claim was already redeemed or already liquidated.
+Use the `try_` form if you want to handle that failure instead of panicking:
+
+```rust
+match token_client.try_liquidate(&token_address, &liquidator_address) {
+    Ok(_) => { /* the claim was moved to the liquidator */ }
+    Err(Ok(_error)) => { /* the token returned a typed error; see its contracterror enum */ }
+    Err(Err(_invoke_error)) => { /* the invocation itself aborted */ }
+}
+```

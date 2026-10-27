@@ -1,10 +1,16 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::Events, Env, IntoVal, symbol_short, vec};
+use soroban_sdk::{testutils::{Address as _, Events}, Env, IntoVal, symbol_short, vec};
 
 use ossify_registry::{RwaRegistry, RwaRegistryClient};
 use ossify_reference_rwa::{MockInvoiceToken, MockInvoiceTokenClient};
+
+/// A $1,000 invoice in 7-decimal units.
+const FACE_VALUE: i128 = 1000_0000000;
+/// 2026-11-01T00:00:00Z: after the default ledger timestamp of 0, so the
+/// invoice is still before its due date for the whole test.
+const DUE_DATE: u64 = 1_793_491_200;
 
 #[test]
 fn test_toy_lending_pool_borrow() {
@@ -15,7 +21,12 @@ fn test_toy_lending_pool_borrow() {
     let registry_client = RwaRegistryClient::new(&env, &registry_id);
     
     let token_id = env.register(MockInvoiceToken, ());
-    let _token_client = MockInvoiceTokenClient::new(&env, &token_id);
+    let token_client = MockInvoiceTokenClient::new(&env, &token_id);
+
+    // The reference token stores real asset state, so it has to be initialized
+    // before a consumer can read live collateral from it.
+    let issuer = Address::generate(&env);
+    token_client.init(&issuer, &FACE_VALUE, &DUE_DATE);
     
     registry_client.register(&token_id);
     
