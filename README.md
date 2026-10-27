@@ -20,7 +20,7 @@ Ossify is a shared collateral standard for tokenized Real-World Assets (RWAs). I
 - **`contracts/trait/`**: Defines the `RwaCollateral` interface trait.
 - **`contracts/registry/`**: A self-registration contract allowing any RWA token to broadcast its compliance with the standard.
 - **`contracts/reference-rwa/`**: A reference implementation of a tokenized invoice that stores its asset record (face value, due date, issuer) and models redemption and liquidation.
-- **`contracts/toy-lending-pool/`**: A minimal mock lending pool that utilizes the registry and trait to check token collateral values and issue simulated loans.
+- **`contracts/toy-lending-pool/`**: A minimal mock lending pool that reads collateral through the registry and trait, records one position per borrower and token, and supports repayment.
 
 ## Quick Start
 To compile the contracts, use the Stellar CLI (v25.2.0+). It performs the spec-shaking step that `soroban-sdk` requires, so a plain `cargo build --target wasm32v1-none --release` will not produce a deployable contract:

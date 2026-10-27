@@ -20,6 +20,8 @@ Once registered, a user can provide their token to a consumer protocol, such as 
 3. The pool uses the `RwaCollateral` client to call `is_redeemable(token)` directly on the token contract to ensure the asset is in good standing (e.g., the underlying invoice hasn't defaulted).
 4. The pool calls `collateral_value(token)` on the token contract to determine the exact fiat or underlying value of the asset.
 5. Using this data, the pool safely calculates the Loan-to-Value (LTV) ratio and extends the loan to the user, emitting a `borrow` event.
+6. The consumer records the resulting loan as a position, keyed by borrower and collateral token, so the same collateral cannot be borrowed against twice. A rejection at any step is reported to the caller as a typed error rather than a panic; the reference consumer (`contracts/toy-lending-pool`) does this with a `#[contracterror]` enum and lends out 50% of the reported value.
+7. Repayment clears the position, which is what makes the collateral available again. The reference consumer's `repay` returns what was owed and emits a `repay` event.
 
 ## 3. Liquidation
 
