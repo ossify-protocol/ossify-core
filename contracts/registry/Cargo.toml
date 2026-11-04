@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 soroban-sdk = { workspace = true }
+ossify-rwa-trait = { path = "../trait" }
 
 [lib]
 crate-type = ["cdylib", "rlib"]

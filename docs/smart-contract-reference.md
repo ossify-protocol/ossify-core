@@ -46,19 +46,38 @@ The central on-chain registry of compliant tokens.
 - **Description**: Returns one page of registered token addresses in registration order. Pass `cursor: None` for the first page, then the `next_cursor` from the previous page. `limit` must be between `1` and `MAX_PAGE_SIZE` (50). A cursor at or past the end of the list returns an empty page with `next_cursor: None` rather than an error. `RegistrationPage` holds `tokens: Vec<Address>` and `next_cursor: Option<u32>`.
 - **Who Can Call**: Anyone.
 
+### `get_collateral_info`
+- **Signature**: `pub fn get_collateral_info(env: Env, token: Address) -> Option<CollateralInfo>`
+- **Description**: Returns one aggregate view of a registered token: `CollateralInfo { token, collateral_value, is_redeemable }`. The values are read live through the token's `RwaCollateral` implementation, so they reflect the token as of the current ledger. Returns `None` for an unregistered token. A registered token that traps in either trait call makes this call trap as well; the registry does not price a broken token as zero.
+- **Who Can Call**: Anyone.
+
+### `refresh_collateral_info`
+- **Signature**: `pub fn refresh_collateral_info(env: Env, token: Address, collateral_value: i128, is_redeemable: bool) -> Result<CollateralInfo, RegistryError>`
+- **Description**: Publishes the values a registered token reports for itself as a `collateral_info_updated` event, and returns the same `CollateralInfo`. The token must authorize the call. It supplies the values because Soroban rejects contract re-entry: a token calling here is already on the call stack, so the registry cannot read it back in the same invocation. The registry does not verify the supplied values; `get_collateral_info` remains the authoritative live read. Fails with `NotRegistered` for an unlisted token.
+- **Who Can Call**: The `token` contract itself (enforced via `token.require_auth()`).
+
 ### `deregister`
 - **Signature**: `pub fn deregister(env: Env, token: Address)`
 - **Description**: Removes a token from the registry. Emits a `deregister` event.
 - **Who Can Call**: The `token` contract itself (enforced via `token.require_auth()`).
 
+### Events
+
+| Event | Topic | Data |
+| --- | --- | --- |
+| `Register` | `register` | `token` |
+| `Deregister` | `deregister` | `token` |
+| `CollateralInfoUpdated` | `collateral_info_updated` | `(token, collateral_value, is_redeemable)` |
+
 ### `RegistryError`
 
-Typed failures returned by `get_registered_page`, defined with `#[contracterror]`.
+Typed failures returned by `get_registered_page` and `refresh_collateral_info`, defined with `#[contracterror]`.
 
 | Variant | Code | Raised when |
 | --- | --- | --- |
 | `InvalidLimit` | 1 | `limit` is zero. |
 | `LimitTooLarge` | 2 | `limit` is greater than `MAX_PAGE_SIZE` (50). |
+| `NotRegistered` | 3 | `refresh_collateral_info` is called for a token that is not listed. |
 
 ## 3. `MockInvoiceToken` (`contracts/reference-rwa`)
 

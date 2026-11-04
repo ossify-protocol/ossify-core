@@ -1,11 +1,73 @@
 #![cfg(test)]
 
 use super::*;
+use ossify_rwa_trait::RwaCollateral;
 use soroban_sdk::{
-    symbol_short,
+    contract, contractimpl, contracttype, symbol_short,
     testutils::{Address as _, Events},
-    vec, Address, ConversionError, Env, IntoVal, InvokeError, Symbol, Vec,
+    vec, Address, ConversionError, Env, Error, IntoVal, InvokeError, Symbol, Vec,
 };
+
+/// A minimal RWA token implementing the shared trait, so the registry tests can
+/// call `get_collateral_info` and `refresh_collateral_info` without depending on
+/// the reference token crate (which would make the dev-dependencies cyclic).
+#[contract]
+pub struct MockRwaToken;
+
+#[contracttype]
+pub enum MockKey {
+    Value,
+    Redeemable,
+}
+
+#[contractimpl]
+impl MockRwaToken {
+    pub fn set(env: Env, collateral_value: i128, is_redeemable: bool) {
+        env.storage()
+            .instance()
+            .set(&MockKey::Value, &collateral_value);
+        env.storage()
+            .instance()
+            .set(&MockKey::Redeemable, &is_redeemable);
+    }
+
+    pub fn register_self(env: Env, registry: Address) {
+        RwaRegistryClient::new(&env, &registry).register(&env.current_contract_address());
+    }
+
+    pub fn publish(env: Env, registry: Address) -> CollateralInfo {
+        let collateral_value: i128 = env.storage().instance().get(&MockKey::Value).unwrap_or(0);
+        let is_redeemable: bool = env
+            .storage()
+            .instance()
+            .get(&MockKey::Redeemable)
+            .unwrap_or(false);
+
+        RwaRegistryClient::new(&env, &registry).refresh_collateral_info(
+            &env.current_contract_address(),
+            &collateral_value,
+            &is_redeemable,
+        )
+    }
+}
+
+#[contractimpl]
+impl RwaCollateral for MockRwaToken {
+    fn collateral_value(env: Env, _token: Address) -> i128 {
+        env.storage().instance().get(&MockKey::Value).unwrap_or(0)
+    }
+
+    fn is_redeemable(env: Env, _token: Address) -> bool {
+        env.storage()
+            .instance()
+            .get(&MockKey::Redeemable)
+            .unwrap_or(false)
+    }
+
+    fn liquidate(_env: Env, _token: Address, _liquidator: Address) -> Result<(), Error> {
+        Ok(())
+    }
+}
 
 /// Registers `count` fresh addresses and returns them in registration order.
 fn register_tokens(env: &Env, client: &RwaRegistryClient, count: u32) -> Vec<Address> {
@@ -201,6 +263,132 @@ fn test_get_registered_page_rejects_invalid_limits() {
     let page = client.get_registered_page(&None, &MAX_PAGE_SIZE);
     assert!(page.tokens.is_empty());
     assert_eq!(page.next_cursor, None);
+}
+
+#[test]
+fn test_get_collateral_info_for_a_registered_token() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let registry_id = env.register(RwaRegistry, ());
+    let registry_client = RwaRegistryClient::new(&env, &registry_id);
+    let token_id = env.register(MockRwaToken, ());
+    let token_client = MockRwaTokenClient::new(&env, &token_id);
+
+    token_client.set(&1_000_0000000, &true);
+    token_client.register_self(&registry_id);
+
+    assert_eq!(
+        registry_client.get_collateral_info(&token_id),
+        Some(CollateralInfo {
+            token: token_id.clone(),
+            collateral_value: 1_000_0000000,
+            is_redeemable: true,
+        })
+    );
+}
+
+#[test]
+fn test_get_collateral_info_for_an_unregistered_token_is_none() {
+    let env = Env::default();
+
+    let registry_id = env.register(RwaRegistry, ());
+    let registry_client = RwaRegistryClient::new(&env, &registry_id);
+    let unknown_token = Address::generate(&env);
+
+    assert_eq!(registry_client.get_collateral_info(&unknown_token), None);
+}
+
+#[test]
+fn test_get_collateral_info_reflects_a_value_changed_since_registration() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let registry_id = env.register(RwaRegistry, ());
+    let registry_client = RwaRegistryClient::new(&env, &registry_id);
+    let token_id = env.register(MockRwaToken, ());
+    let token_client = MockRwaTokenClient::new(&env, &token_id);
+
+    token_client.set(&1_000_0000000, &true);
+    token_client.register_self(&registry_id);
+
+    let before = registry_client.get_collateral_info(&token_id).unwrap();
+    assert_eq!(before.collateral_value, 1_000_0000000);
+    assert!(before.is_redeemable);
+
+    // The view reads the token live, so it must not serve the registration-time
+    // values after the token changes them.
+    token_client.set(&750_0000000, &false);
+
+    let after = registry_client.get_collateral_info(&token_id).unwrap();
+    assert_eq!(after.collateral_value, 750_0000000);
+    assert!(!after.is_redeemable);
+}
+
+#[test]
+fn test_refresh_collateral_info_publishes_the_current_state() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let registry_id = env.register(RwaRegistry, ());
+    let token_id = env.register(MockRwaToken, ());
+    let token_client = MockRwaTokenClient::new(&env, &token_id);
+
+    token_client.set(&4_200_0000000, &true);
+    token_client.register_self(&registry_id);
+
+    // Calls the registry from the token contract itself, so the registry's
+    // `token.require_auth()` is satisfied the way a real integration would.
+    let info = token_client.publish(&registry_id);
+
+    assert_eq!(
+        info,
+        CollateralInfo {
+            token: token_id.clone(),
+            collateral_value: 4_200_0000000,
+            is_redeemable: true,
+        }
+    );
+
+    assert_eq!(
+        env.events().all(),
+        vec![
+            &env,
+            (
+                registry_id.clone(),
+                (Symbol::new(&env, "collateral_info_updated"),).into_val(&env),
+                (token_id.clone(), 4_200_0000000i128, true).into_val(&env)
+            )
+        ]
+    );
+}
+
+#[test]
+fn test_refresh_collateral_info_rejects_an_unregistered_token() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let registry_id = env.register(RwaRegistry, ());
+    let registry_client = RwaRegistryClient::new(&env, &registry_id);
+    let unknown_token = Address::generate(&env);
+
+    assert_eq!(
+        typed_error(registry_client.try_refresh_collateral_info(&unknown_token, &1, &true)),
+        RegistryError::NotRegistered
+    );
+}
+
+#[test]
+#[should_panic(expected = "HostError: Error(Auth, InvalidAction)")]
+fn test_refresh_collateral_info_requires_token_authorization() {
+    let env = Env::default();
+    // No auth is mocked, so `token.require_auth()` inside the registry fails.
+
+    let registry_id = env.register(RwaRegistry, ());
+    let registry_client = RwaRegistryClient::new(&env, &registry_id);
+    let token = Address::generate(&env);
+
+    registry_client.refresh_collateral_info(&token, &1, &true);
 }
 
 #[test]

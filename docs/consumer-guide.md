@@ -38,6 +38,8 @@ assert!(registered_tokens.contains(&token_address), "Token is not Ossify-complia
 
 `get_registered` reads the whole list in one call, so it is only appropriate when the registry is small. For an indexer or any other caller walking a large registry, use the paginated view instead: start with `cursor: None`, then follow `next_cursor` until it is `None`. The page size is capped at `MAX_PAGE_SIZE` (50).
 
+To read one token instead of the whole list, `get_collateral_info(token)` returns a `CollateralInfo { token, collateral_value, is_redeemable }` in a single call, or `None` for an unregistered token. The values are live reads through the token's trait implementation. A registered token can publish changes by calling `refresh_collateral_info(token, collateral_value, is_redeemable)` itself, which emits a `collateral_info_updated` event that indexers can follow; the registry does not verify those self-reported values.
+
 ```rust
 let mut cursor = None;
 loop {

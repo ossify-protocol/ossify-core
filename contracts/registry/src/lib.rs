@@ -1,4 +1,5 @@
 #![no_std]
+use ossify_rwa_trait::RwaCollateralClient;
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, Address, Env, Vec,
 };
@@ -26,6 +27,18 @@ pub struct RegistrationPage {
     pub next_cursor: Option<u32>,
 }
 
+/// An aggregate view of one registered token's collateral state.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CollateralInfo {
+    /// The registered token this snapshot describes.
+    pub token: Address,
+    /// The value the token reports through `RwaCollateral::collateral_value`.
+    pub collateral_value: i128,
+    /// The flag the token reports through `RwaCollateral::is_redeemable`.
+    pub is_redeemable: bool,
+}
+
 /// Typed failures returned by the registry.
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -35,6 +48,8 @@ pub enum RegistryError {
     InvalidLimit = 1,
     /// `limit` was greater than [`MAX_PAGE_SIZE`].
     LimitTooLarge = 2,
+    /// `refresh_collateral_info` was called for a token that is not listed.
+    NotRegistered = 3,
 }
 
 /// Emitted when a token registers itself with the registry.
@@ -50,6 +65,17 @@ pub struct Register {
 #[contractevent(data_format = "single-value")]
 pub struct Deregister {
     token: Address,
+}
+
+/// Emitted when a registered token publishes its current collateral state.
+///
+/// Indexers can follow this event instead of querying every token, provided the
+/// token calls [`RwaRegistry::refresh_collateral_info`] after it changes.
+#[contractevent(data_format = "vec")]
+pub struct CollateralInfoUpdated {
+    token: Address,
+    collateral_value: i128,
+    is_redeemable: bool,
 }
 
 #[contract]
@@ -133,6 +159,59 @@ impl RwaRegistry {
         })
     }
 
+    /// Returns one aggregate view of a registered token's collateral state.
+    ///
+    /// The values are read live through the token's `RwaCollateral`
+    /// implementation, so this reflects the token as of the current ledger.
+    /// Returns `None` when the token is not registered. A registered token that
+    /// traps in either trait call makes this call trap as well; the registry
+    /// does not try to price a broken token as zero.
+    pub fn get_collateral_info(env: Env, token: Address) -> Option<CollateralInfo> {
+        if !read_tokens(&env).contains(&token) {
+            return None;
+        }
+        Some(read_collateral_info(&env, &token))
+    }
+
+    /// Publishes a registered token's current collateral state as an event.
+    ///
+    /// The token supplies the values and must authorize the call, so no third
+    /// party can publish on its behalf. It has to supply them rather than have
+    /// the registry read them back: Soroban rejects contract re-entry, and a
+    /// token calling here is already on the call stack. The registry does not
+    /// verify the values, just as it does not audit a token at registration, so
+    /// [`Self::get_collateral_info`] remains the authoritative live read.
+    ///
+    /// A token that changes its value or redeemability should call this after
+    /// the change so indexers can follow the event instead of polling. Fails
+    /// with [`RegistryError::NotRegistered`] for a token that is not listed.
+    pub fn refresh_collateral_info(
+        env: Env,
+        token: Address,
+        collateral_value: i128,
+        is_redeemable: bool,
+    ) -> Result<CollateralInfo, RegistryError> {
+        token.require_auth();
+
+        if !read_tokens(&env).contains(&token) {
+            return Err(RegistryError::NotRegistered);
+        }
+
+        let info = CollateralInfo {
+            token: token.clone(),
+            collateral_value,
+            is_redeemable,
+        };
+        CollateralInfoUpdated {
+            token,
+            collateral_value,
+            is_redeemable,
+        }
+        .publish(&env);
+
+        Ok(info)
+    }
+
     /// Deregisters a token address, removing it from the compliant RWA list.
     /// If the token is not currently registered, this function acts as a no-op.
     pub fn deregister(env: Env, token: Address) {
@@ -144,6 +223,17 @@ impl RwaRegistry {
             env.storage().instance().set(&DataKey::Tokens, &tokens);
             Deregister { token }.publish(&env);
         }
+    }
+}
+
+/// Reads a token's collateral state through the shared trait, the same way a
+/// consumer protocol does.
+fn read_collateral_info(env: &Env, token: &Address) -> CollateralInfo {
+    let client = RwaCollateralClient::new(env, token);
+    CollateralInfo {
+        token: token.clone(),
+        collateral_value: client.collateral_value(token),
+        is_redeemable: client.is_redeemable(token),
     }
 }
 
