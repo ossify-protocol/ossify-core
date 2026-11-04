@@ -1175,6 +1175,7 @@ dependencies = [
 name = "ossify-registry"
 version = "0.1.0"
 dependencies = [
+ "ossify-rwa-trait",
  "soroban-sdk",
 ]
 
