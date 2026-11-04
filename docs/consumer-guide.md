@@ -36,6 +36,22 @@ let registered_tokens = registry_client.get_registered();
 assert!(registered_tokens.contains(&token_address), "Token is not Ossify-compliant");
 ```
 
+`get_registered` reads the whole list in one call, so it is only appropriate when the registry is small. For an indexer or any other caller walking a large registry, use the paginated view instead: start with `cursor: None`, then follow `next_cursor` until it is `None`. The page size is capped at `MAX_PAGE_SIZE` (50).
+
+```rust
+let mut cursor = None;
+loop {
+    let page = registry_client.get_registered_page(&cursor, &50);
+    for token in page.tokens.iter() {
+        // Inspect or index `token`.
+    }
+    match page.next_cursor {
+        Some(next) => cursor = Some(next),
+        None => break,
+    }
+}
+```
+
 ## Step 3: Check Token Health
 
 Call `is_redeemable` to verify that the underlying asset is in good standing. This protects your protocol from accepting defaulted or locked collateral.

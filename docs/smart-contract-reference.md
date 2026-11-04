@@ -33,13 +33,32 @@ The central on-chain registry of compliant tokens.
 
 ### `get_registered`
 - **Signature**: `pub fn get_registered(env: Env) -> Vec<Address>`
-- **Description**: Returns a list of all currently registered RWA token addresses.
+- **Description**: Returns a list of all currently registered RWA token addresses. This function is kept for backward compatibility, but it is unbounded: it reads and returns the whole list in one invocation, so it is not suitable for a large registry. New callers should use `get_registered_page` and size their response with `get_registered_count`.
+- **Who Can Call**: Anyone.
+
+### `get_registered_count`
+- **Signature**: `pub fn get_registered_count(env: Env) -> u32`
+- **Description**: Returns the number of registered token addresses.
+- **Who Can Call**: Anyone.
+
+### `get_registered_page`
+- **Signature**: `pub fn get_registered_page(env: Env, cursor: Option<u32>, limit: u32) -> Result<RegistrationPage, RegistryError>`
+- **Description**: Returns one page of registered token addresses in registration order. Pass `cursor: None` for the first page, then the `next_cursor` from the previous page. `limit` must be between `1` and `MAX_PAGE_SIZE` (50). A cursor at or past the end of the list returns an empty page with `next_cursor: None` rather than an error. `RegistrationPage` holds `tokens: Vec<Address>` and `next_cursor: Option<u32>`.
 - **Who Can Call**: Anyone.
 
 ### `deregister`
 - **Signature**: `pub fn deregister(env: Env, token: Address)`
 - **Description**: Removes a token from the registry. Emits a `deregister` event.
 - **Who Can Call**: The `token` contract itself (enforced via `token.require_auth()`).
+
+### `RegistryError`
+
+Typed failures returned by `get_registered_page`, defined with `#[contracterror]`.
+
+| Variant | Code | Raised when |
+| --- | --- | --- |
+| `InvalidLimit` | 1 | `limit` is zero. |
+| `LimitTooLarge` | 2 | `limit` is greater than `MAX_PAGE_SIZE` (50). |
 
 ## 3. `MockInvoiceToken` (`contracts/reference-rwa`)
 
