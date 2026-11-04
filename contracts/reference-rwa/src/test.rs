@@ -4,8 +4,9 @@ use super::*;
 use ossify_registry::{RwaRegistry, RwaRegistryClient};
 use ossify_rwa_trait::RwaCollateralClient;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger as _},
-    Address, ConversionError, Env, Error, InvokeError,
+    symbol_short,
+    testutils::{Address as _, Events, Ledger as _},
+    vec, Address, ConversionError, Env, Error, IntoVal, InvokeError,
 };
 
 /// A $1,000 invoice in 7-decimal units.
@@ -111,6 +112,26 @@ fn test_liquidate_fails_when_already_redeemed() {
 }
 
 #[test]
+fn test_liquidate_fails_on_a_token_that_was_never_initialized() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let token_id = env.register(MockInvoiceToken, ());
+    let token_client = MockInvoiceTokenClient::new(&env, &token_id);
+    let liquidator = Address::generate(&env);
+
+    // An uninitialized token reports the same non-redeemable state as a retired
+    // claim, so liquidation has to be rejected instead of succeeding.
+    assert_eq!(token_client.collateral_value(&token_id), 0);
+    assert!(!token_client.is_redeemable(&token_id));
+
+    assert_eq!(
+        liquidate_error(token_client.try_liquidate(&token_id, &liquidator)),
+        ContractError::NotInitialized
+    );
+}
+
+#[test]
 fn test_past_due_asset_is_worthless_and_not_redeemable() {
     let (env, _registry_id, token_id) = setup(AFTER_DUE);
     let token_client = MockInvoiceTokenClient::new(&env, &token_id);
@@ -147,6 +168,21 @@ fn test_register_self_registers_token_in_registry() {
     assert!(registry_client.get_registered().is_empty());
 
     token_client.register_self(&registry_id);
+
+    // The registry, not the token, emits the event; the token only calls it.
+    // Assert before another top-level call, since `events().all()` reports the
+    // events of the most recent invocation.
+    assert_eq!(
+        env.events().all(),
+        vec![
+            &env,
+            (
+                registry_id.clone(),
+                (symbol_short!("register"),).into_val(&env),
+                token_id.into_val(&env)
+            )
+        ]
+    );
 
     let registered = registry_client.get_registered();
     assert_eq!(registered.len(), 1);
