@@ -176,3 +176,64 @@ entry's TTL is extended when it is created (see `POSITION_TTL_THRESHOLD` and
 `POSITION_TTL_EXTEND_TO`), so an outstanding loan cannot be archived out from
 under the borrower. This is still a mock: there is no interest, no partial
 repayment, no settlement asset and no LTV health check.
+
+## 5. `WarehouseReceiptToken` (`contracts/reference-warehouse-receipt`)
+
+A second reference implementation, modelling a warehouse receipt for goods held
+in storage. It is a 1:1 model like the invoice token, but the value is a stored
+`quantity * unit_price` rather than a face value, the depositor holding the
+receipt authorizes redemption, and the claim expires at a storage expiry rather
+than a payment due date. Registering it in the same registry as the invoice token
+is covered by `test_registry_lists_both_reference_tokens`.
+
+### `init`
+- **Signature**: `pub fn init(env: Env, warehouse: Address, depositor: Address, quantity: u32, unit_price: i128, storage_expiry: u64) -> Result<(), ContractError>`
+- **Description**: Creates the asset record: the warehouse operator, the depositor, `quantity` of goods, `unit_price` in 7-decimal units, `storage_expiry` as a ledger timestamp in seconds, and the `redeemed` and `defaulted` flags, both starting `false`. Rejects a zero quantity, a non-positive unit price, or a product that overflows `i128` with `InvalidAmount`. A second call fails with `AlreadyInitialized` instead of replacing the record.
+- **Who Can Call**: The `warehouse` address, which must authorize the call.
+
+### `redeem`
+- **Signature**: `pub fn redeem(env: Env) -> Result<(), ContractError>`
+- **Description**: Marks the receipt as collected by its depositor, retiring the claim. From then on `collateral_value` reports `0` and `is_redeemable` reports `false`. Fails with `PastMaturity` at or after the storage expiry, and with `AlreadyRedeemed`, `AlreadyDefaulted` or `NotInitialized` as applicable.
+- **Who Can Call**: The `depositor` stored by `init`, which must authorize the call.
+
+### `collateral_value`
+- **Signature**: `fn collateral_value(env: Env, token: Address) -> i128`
+- **Description**: Returns the stored `quantity * unit_price` while the receipt is live, and `0` once it has been redeemed, has defaulted, is past its storage expiry, or was never initialized.
+
+### `is_redeemable`
+- **Signature**: `fn is_redeemable(env: Env, token: Address) -> bool`
+- **Description**: `true` only while the receipt is live: not redeemed, not defaulted, and before its storage expiry.
+
+### `liquidate`
+- **Signature**: `fn liquidate(env: Env, token: Address, liquidator: Address) -> Result<(), Error>`
+- **Description**: Marks the receipt defaulted, which is the warehouse failing to produce the stored goods. Liquidation stays available after the storage expiry, which is the default case it exists for, and fails with `AlreadyRedeemed` or `AlreadyDefaulted` otherwise.
+- **Who Can Call**: The `liquidator` address, which must authorize the call, since it is the address taking over the claim.
+
+### `register_self`
+- **Signature**: `pub fn register_self(env: Env, registry: Address)`
+- **Description**: A helper function allowing the contract to authorize its own registration in the `RwaRegistry`.
+- **Who Can Call**: Anyone, as it strictly registers the contract's own address.
+
+### `ContractError`
+
+| Variant | Code | Raised when |
+| --- | --- | --- |
+| `AlreadyInitialized` | 1 | `init` is called on a token that already has an asset record. |
+| `NotInitialized` | 2 | `redeem` or `liquidate` is called before `init`. |
+| `AlreadyRedeemed` | 3 | The depositor already collected the goods. |
+| `AlreadyDefaulted` | 4 | A liquidator already took over the claim. |
+| `PastMaturity` | 5 | `redeem` is called at or after the storage expiry. |
+| `InvalidAmount` | 6 | `quantity` or `unit_price` is not positive, or their product overflows `i128`. |
+
+### Testnet deployment
+
+Deployed on 2026-11-05 at `CASMBLVUAUQ6M6WVGZH5RRGLKVKRVXWERG5XP7XSKCPTSPADG7XR5SI2`
+with `quantity = 500`, `unit_price = 20000000` and storage expiry `1800000000`, and
+registered in the registry at
+`CB3OM6CSKYXJZUVFJAZWS3IO7JCMSAZSFOCCE35WJLXTUGRI3HJLITY4`. On that registry,
+`get_registered` returns both the invoice token
+(`CCGFQHBWBLBLRHI33OI7CW6JMKVFAUVB4C372R2KPFZCLQJB2ZGWSYQD`) and this receipt, and
+the token's `collateral_value` and `is_redeemable` answered `10000000000` and
+`true`. That registry was deployed before the pagination and collateral-info
+views existed, so `get_registered_count` and `get_collateral_info` are not yet
+callable on it.

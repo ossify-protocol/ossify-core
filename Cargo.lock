@@ -1284,6 +1284,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ossify-reference-warehouse-receipt"
+version = "0.1.0"
+dependencies = [
+ "ossify-reference-rwa",
+ "ossify-registry",
+ "ossify-rwa-trait",
+ "soroban-sdk",
+]
+
+[[package]]
 name = "ossify-registry"
 version = "0.1.0"
 dependencies = [
