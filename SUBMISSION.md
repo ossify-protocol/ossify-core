@@ -14,6 +14,7 @@ The core infrastructure and reference implementations are live on the Stellar Te
 - **Registry**: `CB3OM6CSKYXJZUVFJAZWS3IO7JCMSAZSFOCCE35WJLXTUGRI3HJLITY4`
 - **Reference RWA (Mock Invoice)**: `CCGFQHBWBLBLRHI33OI7CW6JMKVFAUVB4C372R2KPFZCLQJB2ZGWSYQD`
 - **Toy Lending Pool**: `CBFB44ZY6KZP7A3FWPZ5TMMJO3EZO2JWAM5H6IF5P5VPMBEHVEHLOMON`
+- **Reference Warehouse Receipt**: `CASMBLVUAUQ6M6WVGZH5RRGLKVKRVXWERG5XP7XSKCPTSPADG7XR5SI2` (registered in the registry above; `get_registered` lists it alongside the reference RWA token)
 
 *(All deployments can be verified on Stellar Expert using the IDs above).*
 

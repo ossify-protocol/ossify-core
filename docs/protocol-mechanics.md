@@ -39,6 +39,13 @@ way: once the issuer has settled it, `collateral_value` reports `0`,
 `is_redeemable` reports `false`, and a later liquidation fails as
 `AlreadyRedeemed`.
 
+The warehouse-receipt reference (`contracts/reference-warehouse-receipt`) follows
+the same shape for a different lifecycle. Its value is the stored `quantity *
+unit_price`, the depositor who holds the receipt authorizes redemption, storage
+expiry makes the receipt non-redeemable, and a default is a liquidation that
+marks the receipt defaulted. A consumer integration does not change between the
+two: both are read through the same registry and trait.
+
 ## 4. Deregistration
 
 If a token issuer decides to deprecate their asset or withdraw from the Ossify standard, they can remove themselves from the registry.

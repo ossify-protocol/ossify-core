@@ -53,6 +53,9 @@ impl RwaCollateral for MyInvoiceToken {
 guide. It creates its asset record (face value, due date, issuer) in an `init` that
 requires the issuer's authorization, and reports a `0` collateral value and `false`
 redeemability once the claim has been redeemed, liquidated or passed its due date.
+`contracts/reference-warehouse-receipt` is a second complete implementation for a
+different asset type, where the value is a stored quantity times a unit price and
+the depositor, rather than the issuer, redeems.
 Two details there are worth copying:
 
 - **Typed errors on a trait function.** `liquidate` belongs to the shared trait, whose
