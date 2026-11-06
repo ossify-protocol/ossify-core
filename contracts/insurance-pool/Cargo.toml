@@ -1,0 +1,17 @@
+[package]
+name = "ossify-insurance-pool"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+soroban-sdk = { workspace = true }
+ossify-rwa-trait = { path = "../trait" }
+ossify-registry = { path = "../registry" }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+ossify-reference-rwa = { path = "../reference-rwa", features = ["testutils"] }
+ossify-registry = { path = "../registry", features = ["testutils"] }
+
+[lib]
+crate-type = ["cdylib", "rlib"]
