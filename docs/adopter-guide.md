@@ -93,3 +93,13 @@ impl MyInvoiceToken {
 Deploy your token to the Stellar network as usual. Once deployed, invoke your `register_in_ossify` function, passing the official Ossify `RwaRegistry` contract ID.
 
 Your token is now listed in the Ossify `RwaRegistry` and can be read by any consumer protocol that integrates that registry. Note that listing only means your contract authorized its own registration: consumers still need to set their own risk policy, since the registry does not verify your `collateral_value` or `liquidate` logic.
+
+### Insurance Pool Consumer
+
+The insurance-pool consumer contract has been added to the Ossify ecosystem (see [Task 9](https://github.com/ossify-protocol/ossify-core/issues/2)). This consumer reads collateral through the registry and `RwaCollateral` trait. It supports:
+
+- `borrow_against` - lends against registered, redeemable tokens
+- `repay` - clears an open position in full
+- Emits `Borrow` and `Repay` events
+
+Tokens listed in the registry can be used as collateral by the insurance pool, subject to the pool's own risk policy.r own risk policy, since the registry does not verify your `collateral_value` or `liquidate` logic.
